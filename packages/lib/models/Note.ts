@@ -825,12 +825,20 @@ export default class Note extends BaseItem {
 
 		let savedNote = await super.save(o, options);
 
-		void ItemChange.add(BaseModel.TYPE_NOTE, savedNote.id, isNew ? ItemChange.TYPE_CREATE : ItemChange.TYPE_UPDATE, changeSource, beforeNoteJson);
+		void ItemChange.add(BaseModel.TYPE_NOTE, savedNote.id, isNew ? ItemChange.TYPE_CREATE : ItemChange.TYPE_UPDATE, {
+			changeSource, changeId: options?.changeId, beforeChangeItemJson: beforeNoteJson,
+		});
 
 		if (dispatchUpdateAction) {
+			// The UI requires share_id -- if a new note, it will always be the empty string in the database
+			// until processed by the share service. At present, loading savedNote from the database in this case
+			// breaks tests.
+			if (!('share_id' in savedNote) && isNew) {
+				savedNote.share_id = '';
+			}
 			// Ensures that any note added to the state has all the required
 			// properties for the UI to work.
-			if (!('deleted_time' in savedNote)) {
+			if (!('deleted_time' in savedNote) || !('share_id' in savedNote)) {
 				const fields = removeElement(unique(this.previewFields().concat(Object.keys(savedNote))), 'type_');
 				savedNote = await this.load(savedNote.id, {
 					fields,
@@ -843,6 +851,7 @@ export default class Note extends BaseItem {
 				provisional: isProvisional,
 				ignoreProvisionalFlag: ignoreProvisionalFlag,
 				changedFields: changedFields,
+				changeId: options?.changeId,
 				...options?.dispatchOptions,
 			});
 		}
@@ -913,7 +922,9 @@ export default class Note extends BaseItem {
 
 			for (let i = 0; i < processIds.length; i++) {
 				const id = processIds[i];
-				void ItemChange.add(BaseModel.TYPE_NOTE, id, changeType, changeSource, beforeChangeItems[id]);
+				void ItemChange.add(BaseModel.TYPE_NOTE, id, changeType, {
+					changeSource, beforeChangeItemJson: beforeChangeItems[id],
+				});
 
 				this.dispatch({
 					type: 'NOTE_DELETE',
@@ -1019,6 +1030,7 @@ export default class Note extends BaseItem {
 					FROM notes
 					WHERE
 						is_conflict = 0
+						AND deleted_time = 0
 						${showCompletedTodos ? '' : 'AND todo_completed = 0'}
 					AND parent_id = ?
 				`;

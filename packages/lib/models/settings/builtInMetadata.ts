@@ -14,6 +14,17 @@ const customCssFilePath = (Setting: typeof SettingType, filename: string): strin
 	return `${Setting.value('rootProfileDir')}/${filename}`;
 };
 
+export enum CameraDirection {
+	Back,
+	Front,
+}
+
+export enum ScrollbarSize {
+	Small = 7,
+	Medium = 12,
+	Large = 24,
+}
+
 const builtInMetadata = (Setting: typeof SettingType) => {
 	const platform = shim.platformName();
 	const mobilePlatform = shim.mobilePlatform();
@@ -653,6 +664,25 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			storage: SettingStorage.File,
 			isGlobal: true,
 		},
+		'editor.pastePreserveColors': {
+			value: false,
+			type: SettingItemType.Bool,
+			public: true,
+			section: 'note',
+			appTypes: [AppType.Desktop],
+			label: () => _('Preserve colours when pasting text in Rich Text Editor'),
+			storage: SettingStorage.File,
+			isGlobal: true,
+		},
+		'editor.toolbarButtons': {
+			value: [] as string[],
+			public: false,
+			type: SettingItemType.Array,
+			storage: SettingStorage.File,
+			isGlobal: true,
+			appTypes: [AppType.Mobile],
+			label: () => 'buttons included in the editor toolbar',
+		},
 		'notes.columns': {
 			value: defaultListColumns(),
 			public: false,
@@ -883,7 +913,7 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			advanced: true,
 
 			label: () => _('Plugin WebView debugging'),
-			description: () => _('Allows debugging mobile plugins. See %s for details.', 'https://https://joplinapp.org/help/api/references/mobile_plugin_debugging/'),
+			description: () => _('Allows debugging mobile plugins. See %s for details.', 'https://joplinapp.org/help/api/references/mobile_plugin_debugging/'),
 		},
 
 		'plugins.pluginSupportEnabled': {
@@ -905,10 +935,30 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			section: 'plugins',
 			public: true,
 			advanced: true,
-			appTypes: [AppType.Desktop],
+			appTypes: [AppType.Desktop, AppType.Mobile],
+			// For now, development plugins are only enabled on desktop & web.
+			show: (settings) => {
+				if (shim.isElectron()) return true;
+				if (shim.mobilePlatform() !== 'web') return false;
+
+				const pluginSupportEnabled = settings['plugins.pluginSupportEnabled'];
+				return !!pluginSupportEnabled;
+			},
 			label: () => 'Development plugins',
-			description: () => 'You may add multiple plugin paths, each separated by a comma. You will need to restart the application for the changes to take effect.',
+			description: () => {
+				if (shim.mobilePlatform()) {
+					return 'The path to a plugin\'s development directory. When the plugin is rebuilt, Joplin reloads the plugin automatically.';
+				} else {
+					return 'You may add multiple plugin paths, each separated by a comma. You will need to restart the application for the changes to take effect.';
+				}
+			},
 			storage: SettingStorage.File,
+		},
+
+		'plugins.shownEditorViewIds': {
+			value: [] as string[],
+			type: SettingItemType.Array,
+			public: false,
 		},
 
 		// Deprecated - use markdown.plugin.*
@@ -937,6 +987,18 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 		'markdown.plugin.emoji': { storage: SettingStorage.File, isGlobal: true, value: false, type: SettingItemType.Bool, section: 'markdownPlugins', public: true, appTypes: [AppType.Mobile, AppType.Desktop], label: () => `${_('Enable markdown emoji')}${wysiwygNo}` },
 		'markdown.plugin.insert': { storage: SettingStorage.File, isGlobal: true, value: false, type: SettingItemType.Bool, section: 'markdownPlugins', public: true, appTypes: [AppType.Mobile, AppType.Desktop], label: () => `${_('Enable ++insert++ syntax')}${wysiwygYes}` },
 		'markdown.plugin.multitable': { storage: SettingStorage.File, isGlobal: true, value: false, type: SettingItemType.Bool, section: 'markdownPlugins', public: true, appTypes: [AppType.Mobile, AppType.Desktop], label: () => `${_('Enable multimarkdown table extension')}${wysiwygNo}` },
+
+		// For now, applies only to the Markdown viewer
+		'renderer.fileUrls': {
+			storage: SettingStorage.File,
+			isGlobal: true,
+			value: false,
+			type: SettingItemType.Bool,
+			section: 'markdownPlugins',
+			public: true,
+			appTypes: [AppType.Desktop],
+			label: () => `${_('Enable file:// URLs for images and videos')}${wysiwygYes}`,
+		},
 
 		// Tray icon (called AppIndicator) doesn't work in Ubuntu
 		// http://www.webupd8.org/2017/04/fix-appindicator-not-working-for.html
@@ -1063,6 +1125,26 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 		},
 
 		'style.editor.contentMaxWidth': { value: 0, type: SettingItemType.Int, public: true, storage: SettingStorage.File, isGlobal: true, appTypes: [AppType.Desktop], section: 'appearance', label: () => _('Editor maximum width'), description: () => _('Set it to 0 to make it take the complete available space. Recommended width is 600.') },
+
+		'style.scrollbarSize': {
+			value: ScrollbarSize.Small,
+			type: SettingItemType.String,
+			public: true,
+			section: 'appearance',
+			appTypes: [AppType.Desktop],
+			isEnum: true,
+
+			options: () => ({
+				[ScrollbarSize.Small]: _('Small'),
+				[ScrollbarSize.Medium]: _('Medium'),
+				[ScrollbarSize.Large]: _('Large'),
+			}),
+
+			label: () => _('Scrollbar size'),
+			description: () => _('Configures the size of scrollbars used in the app.'),
+			storage: SettingStorage.File,
+			isGlobal: true,
+		},
 
 		'ui.layout': { value: {}, type: SettingItemType.Object, storage: SettingStorage.File, isGlobal: true, public: false, appTypes: [AppType.Desktop] },
 
@@ -1244,8 +1326,7 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			type: SettingItemType.Bool,
 			public: true,
 			appTypes: [AppType.Desktop],
-			label: () => _('Enable spell checking in Markdown editor?'),
-			description: () => _('Checks spelling in most non-code regions of the Markdown editor.'),
+			label: () => _('Enable spell checking in Markdown editor'),
 			storage: SettingStorage.File,
 			isGlobal: true,
 		},
@@ -1290,7 +1371,7 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			public: true,
 			appTypes: [AppType.Desktop],
 			label: () => _('Use the legacy Markdown editor'),
-			description: () => _('Enable the the legacy Markdown editor. Some plugins require this editor to function. However, it has accessibility issues and other plugins will not work.'),
+			description: () => 'Enable the the legacy Markdown editor. Some plugins require this editor to function. However, it has accessibility issues and other plugins will not work.',
 			storage: SettingStorage.File,
 			isGlobal: true,
 		},
@@ -1436,7 +1517,7 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 		'welcome.wasBuilt': { value: false, type: SettingItemType.Bool, public: false },
 		'welcome.enabled': { value: true, type: SettingItemType.Bool, public: false },
 
-		'camera.type': { value: 0, type: SettingItemType.Int, public: false, appTypes: [AppType.Mobile] },
+		'camera.type': { value: CameraDirection.Back, type: SettingItemType.Int, public: false, appTypes: [AppType.Mobile] },
 		'camera.ratio': { value: '4:3', type: SettingItemType.String, public: false, appTypes: [AppType.Mobile] },
 
 		'spellChecker.enabled': { value: true, type: SettingItemType.Bool, isGlobal: true, storage: SettingStorage.File, public: false },
@@ -1543,7 +1624,7 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 		'security.biometricsEnabled': {
 			value: false,
 			type: SettingItemType.Bool,
-			label: () => `${_('Use biometrics to secure access to the app')} (Beta)`,
+			label: () => `${_('Use biometrics to secure access to the app')}${shim.mobilePlatform() !== 'ios' ? ' (Beta)' : ''}`,
 			description: () => 'Important: This is a beta feature and it is not compatible with certain devices. If the app no longer starts after enabling this or is very slow to start, please uninstall and reinstall the app.',
 			show: () => shim.mobilePlatform() !== 'web',
 			public: true,
@@ -1577,15 +1658,18 @@ const builtInMetadata = (Setting: typeof SettingType) => {
 			isGlobal: true,
 		},
 
-		'featureFlag.syncLockEnabled': {
-			value: true,
+		'featureFlag.linuxKeychain': {
+			value: false,
 			type: SettingItemType.Bool,
 			public: true,
 			storage: SettingStorage.File,
-			label: () => 'Enable sync locks',
-			description: () => 'This is an experimental setting to disable sync locks',
-			section: 'sync',
+			appTypes: [AppType.Desktop],
+			label: () => 'Enable keychain support',
+			description: () => 'This is an experimental setting to enable keychain support on Linux',
+			show: () => shim.isLinux(),
+			section: 'general',
 			isGlobal: true,
+			advanced: true,
 		},
 
 

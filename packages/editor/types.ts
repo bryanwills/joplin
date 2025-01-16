@@ -33,12 +33,15 @@ export enum EditorCommandType {
 	InsertHorizontalRule = 'textHorizontalRule',
 
 	// Find commands
+	ToggleSearch = 'textSearch',
 	ShowSearch = 'find',
 	HideSearch = 'hideSearchDialog',
 	FindNext = 'findNext',
 	FindPrevious = 'findPrev',
 	ReplaceNext = 'replace',
 	ReplaceAll = 'replaceAll',
+
+	EditLink = 'textLink',
 
 	// Editing and navigation commands
 	ScrollSelectionIntoView = 'scrollSelectionIntoView',
@@ -90,6 +93,7 @@ export interface ContentScriptData {
 // Intended to correspond with https://codemirror.net/docs/ref/#state.Transaction%5EuserEvent
 export enum UserEventSource {
 	Paste = 'input.paste',
+	Drop = 'input.drop',
 }
 
 export interface EditorControl {
@@ -167,6 +171,8 @@ export interface EditorSettings {
 	readOnly: boolean;
 
 	indentWithTabs: boolean;
+
+	editorLabel: string;
 }
 
 export type LogMessageCallback = (message: string)=> void;
